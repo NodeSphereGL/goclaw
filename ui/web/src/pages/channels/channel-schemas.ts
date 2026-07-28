@@ -176,6 +176,7 @@ export const configSchema: Record<string, FieldDef[]> = {
     { key: "native_stream", label: "Native Streaming (Agents & AI Apps)", type: "boolean", defaultValue: false, help: "Use Slack's ChatStreamer API for native streaming. Falls back to edit-in-place if unavailable." },
     { key: "debounce_delay", label: "Debounce Delay (ms)", type: "number", defaultValue: 300, help: "Milliseconds to wait before dispatching rapid messages. Set 0 to disable." },
     { key: "thread_ttl", label: "Thread Participation TTL (hours)", type: "number", defaultValue: 24, help: "Hours before bot stops auto-replying in threads it participated in. 0 = always require @mention." },
+    { key: "reply_in_thread", label: "Reply in Thread", type: "boolean", defaultValue: true, help: "Start a thread for channel messages. Turn off to reply directly in the channel (replies inside an existing thread stay threaded)." },
     { key: "reaction_level", label: "Reaction Level", type: "select", options: [{ value: "off", label: "Off" }, { value: "minimal", label: "Minimal (thinking + done)" }, { value: "full", label: "Full (all status emoji)" }], defaultValue: "off", help: "Show emoji reactions on user messages during agent processing" },
     { key: "allow_from", label: "Allowed Users", type: "tags", help: "Slack user IDs (U...) allowed to interact; empty = no allowlist filter" },
     ...chatBehaviorOverrideFields,

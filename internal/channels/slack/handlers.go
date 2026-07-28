@@ -216,7 +216,7 @@ func (c *Channel) handleMessage(ev *slackevents.MessageEvent) {
 
 	// Send "Thinking..." placeholder
 	replyThreadTS := threadTS
-	if !isDM && replyThreadTS == "" {
+	if !isDM && replyThreadTS == "" && c.replyInThread() {
 		replyThreadTS = ev.TimeStamp // start thread from the triggering message
 	}
 

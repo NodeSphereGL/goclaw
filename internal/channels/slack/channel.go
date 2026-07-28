@@ -68,6 +68,17 @@ var _ channels.StreamingChannel = (*Channel)(nil)
 var _ channels.ReactionChannel = (*Channel)(nil)
 var _ channels.BlockReplyChannel = (*Channel)(nil)
 
+// replyInThread reports whether the bot should open a thread for a root-level
+// channel message. Default true (preserves historical behavior). When false the
+// bot replies directly in the channel; replies to messages already inside a
+// thread still stay in that thread.
+func (c *Channel) replyInThread() bool {
+	if c.config.ReplyInThread != nil {
+		return *c.config.ReplyInThread
+	}
+	return true
+}
+
 // New creates a new Slack channel from config.
 func New(cfg config.SlackConfig, msgBus *bus.MessageBus, pairingSvc store.PairingStore, pendingStore store.PendingMessageStore) (*Channel, error) {
 	if cfg.BotToken == "" {

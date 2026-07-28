@@ -63,7 +63,7 @@ func (c *Channel) handleAppMention(ev *slackevents.AppMentionEvent) {
 		"preview", channels.Truncate(content, 50))
 
 	replyThreadTS := threadTS
-	if replyThreadTS == "" {
+	if replyThreadTS == "" && c.replyInThread() {
 		replyThreadTS = ev.TimeStamp
 	}
 

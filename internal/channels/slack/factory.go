@@ -32,6 +32,7 @@ type slackInstanceConfig struct {
 	ChatBehavior   *config.ChatBehaviorConfig `json:"chat_behavior,omitempty"`
 	DebounceDelay  *int                       `json:"debounce_delay,omitempty"`
 	ThreadTTL      *int                       `json:"thread_ttl,omitempty"`
+	ReplyInThread  *bool                      `json:"reply_in_thread,omitempty"`
 }
 
 // Factory creates a Slack channel from DB instance data.
@@ -76,6 +77,7 @@ func Factory(name string, creds json.RawMessage, cfg json.RawMessage,
 		ChatBehavior:   ic.ChatBehavior,
 		DebounceDelay:  ic.DebounceDelay,
 		ThreadTTL:      ic.ThreadTTL,
+		ReplyInThread:  ic.ReplyInThread,
 	}
 
 	// Secure default: DB instances default to "pairing" for groups.

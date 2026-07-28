@@ -173,6 +173,7 @@ type SlackConfig struct {
 	ChatBehavior   *ChatBehaviorConfig `json:"chat_behavior,omitempty"`   // override gateway chat behavior (nil = inherit)
 	DebounceDelay  *int                `json:"debounce_delay,omitempty"`  // ms delay before dispatching rapid messages (default 300, 0=disabled)
 	ThreadTTL      *int                `json:"thread_ttl,omitempty"`      // hours before thread participation expires (default 24, 0=disabled — always require @mention)
+	ReplyInThread  *bool               `json:"reply_in_thread,omitempty"` // start a thread for root-level channel messages (default true; false = reply directly in channel)
 	MediaMaxBytes  int64               `json:"media_max_bytes,omitempty"` // max file download size in bytes (default 20MB)
 }
 
