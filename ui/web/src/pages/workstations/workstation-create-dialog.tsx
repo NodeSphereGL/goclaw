@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -38,14 +39,17 @@ export function WorkstationCreateDialog({
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [backend, setBackend] = useState<BackendType>("ssh");
-  // SSH fields
+  // SSH fields — auth requires privateKey OR password (backend contract).
   const [host, setHost] = useState("");
   const [port, setPort] = useState("22");
   const [user, setUser] = useState("");
-  const [identityFile, setIdentityFile] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  const [password, setPassword] = useState("");
+  const [fingerprint, setFingerprint] = useState("");
   // Docker fields
   const [container, setContainer] = useState("");
-  const [dockerHost, setDockerHost] = useState("");
+  const [image, setImage] = useState("");
+  const [socketPath, setSocketPath] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -57,9 +61,12 @@ export function WorkstationCreateDialog({
     setHost("");
     setPort("22");
     setUser("");
-    setIdentityFile("");
+    setPrivateKey("");
+    setPassword("");
+    setFingerprint("");
     setContainer("");
-    setDockerHost("");
+    setImage("");
+    setSocketPath("");
     setFieldError(null);
   }
 
@@ -67,34 +74,45 @@ export function WorkstationCreateDialog({
     e.preventDefault();
     if (!name.trim() || !key.trim()) return;
 
-    // Build backend metadata
+    // Build backend metadata using the backend camelCase contract.
     let metadata: Record<string, unknown>;
     if (backend === "ssh") {
       if (!host.trim() || !user.trim()) {
-        setFieldError("Host and SSH user are required for SSH backend.");
+        setFieldError(t("createDialog.sshHostUserRequired"));
+        return;
+      }
+      if (!privateKey.trim() && !password.trim()) {
+        setFieldError(t("createDialog.sshAuthRequired"));
         return;
       }
       metadata = {
         host: host.trim(),
         port: parseInt(port, 10) || 22,
         user: user.trim(),
-        ...(identityFile.trim() ? { identity_file: identityFile.trim() } : {}),
+        ...(privateKey.trim() ? { privateKey: privateKey.trim() } : {}),
+        ...(password.trim() ? { password: password.trim() } : {}),
+        ...(fingerprint.trim() ? { knownHostsFingerprint: fingerprint.trim() } : {}),
       };
     } else {
-      if (!container.trim()) {
-        setFieldError("Container name is required for Docker backend.");
+      if (!container.trim() && !socketPath.trim()) {
+        setFieldError(t("createDialog.dockerHostRequired"));
+        return;
+      }
+      if (!image.trim()) {
+        setFieldError(t("createDialog.dockerImageRequired"));
         return;
       }
       metadata = {
-        container: container.trim(),
-        ...(dockerHost.trim() ? { docker_host: dockerHost.trim() } : {}),
+        image: image.trim(),
+        ...(container.trim() ? { host: container.trim() } : {}),
+        ...(socketPath.trim() ? { socketPath: socketPath.trim() } : {}),
       };
     }
 
     setFieldError(null);
     setSubmitting(true);
     try {
-      await onCreate({ workstation_key: key.trim(), name: name.trim(), backend_type: backend, metadata });
+      await onCreate({ workstationKey: key.trim(), name: name.trim(), backendType: backend, metadata });
       resetForm();
       onOpenChange(false);
     } catch (err) {
@@ -189,14 +207,39 @@ export function WorkstationCreateDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="ws-identity">{t("createDialog.identityFileLabel")}</Label>
+                  <Label htmlFor="ws-privatekey">{t("createDialog.privateKeyLabel")}</Label>
+                  <Textarea
+                    id="ws-privatekey"
+                    value={privateKey}
+                    onChange={(e) => setPrivateKey(e.target.value)}
+                    placeholder={t("createDialog.privateKeyPlaceholder")}
+                    rows={4}
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("createDialog.privateKeyHint")}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ws-password">{t("createDialog.passwordLabel")}</Label>
                   <Input
-                    id="ws-identity"
-                    value={identityFile}
-                    onChange={(e) => setIdentityFile(e.target.value)}
-                    placeholder={t("createDialog.identityFilePlaceholder")}
+                    id="ws-password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={t("createDialog.passwordPlaceholder")}
+                    className="text-base md:text-sm"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ws-fingerprint">{t("createDialog.fingerprintLabel")}</Label>
+                  <Input
+                    id="ws-fingerprint"
+                    value={fingerprint}
+                    onChange={(e) => setFingerprint(e.target.value)}
+                    placeholder={t("createDialog.fingerprintPlaceholder")}
                     className="text-base md:text-sm"
                   />
+                  <p className="text-xs text-muted-foreground">{t("createDialog.fingerprintHint")}</p>
                 </div>
               </>
             )}
@@ -214,12 +257,22 @@ export function WorkstationCreateDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="ws-docker-host">{t("createDialog.dockerHostLabel")}</Label>
+                  <Label htmlFor="ws-image">{t("createDialog.imageLabel")}</Label>
                   <Input
-                    id="ws-docker-host"
-                    value={dockerHost}
-                    onChange={(e) => setDockerHost(e.target.value)}
-                    placeholder={t("createDialog.dockerHostPlaceholder")}
+                    id="ws-image"
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    placeholder={t("createDialog.imagePlaceholder")}
+                    className="text-base md:text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ws-socket">{t("createDialog.socketPathLabel")}</Label>
+                  <Input
+                    id="ws-socket"
+                    value={socketPath}
+                    onChange={(e) => setSocketPath(e.target.value)}
+                    placeholder={t("createDialog.socketPathPlaceholder")}
                     className="text-base md:text-sm"
                   />
                 </div>

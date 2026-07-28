@@ -3,20 +3,22 @@ import { useWs } from "@/hooks/use-ws";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { Methods } from "@/api/protocol";
 
+// Field names match the backend SanitizedWorkstation JSON shape (camelCase).
 export interface Workstation {
   id: string;
-  workstation_key: string;
+  workstationKey: string;
   name: string;
-  backend_type: "ssh" | "docker";
+  backendType: "ssh" | "docker";
   active: boolean;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
+  metadataSummary?: Record<string, unknown>;
 }
 
 export interface CreateWorkstationParams {
-  workstation_key: string;
+  workstationKey: string;
   name: string;
-  backend_type: "ssh" | "docker";
+  backendType: "ssh" | "docker";
   metadata?: Record<string, unknown>;
 }
 
