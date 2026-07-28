@@ -121,6 +121,10 @@ type SSHMetadata struct {
 	KnownHostsFingerprint string `json:"knownHostsFingerprint,omitempty"`
 	// ConnectTimeoutSec overrides the default 10s TCP dial timeout.
 	ConnectTimeoutSec int `json:"connectTimeoutSec,omitempty"`
+	// RawCommand sends the command without POSIX shell quoting/joining. Enable for
+	// targets whose SSH exec channel is not a POSIX shell (e.g. MikroTik RouterOS,
+	// Cisco IOS), where quoting produces "expected command name" parse errors.
+	RawCommand bool `json:"rawCommand,omitempty"`
 }
 
 // DockerMetadata contains Docker-specific connection parameters.

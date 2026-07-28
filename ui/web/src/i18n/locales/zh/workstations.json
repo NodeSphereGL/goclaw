@@ -51,6 +51,8 @@
     "fingerprintLabel": "Known Hosts 指纹（可选）",
     "fingerprintPlaceholder": "SHA256:...",
     "fingerprintHint": "留空则首次连接时信任 (TOFU)；指纹会被记录以便后续固定。",
+    "rawCommandLabel": "原始命令（非 POSIX shell）",
+    "rawCommandHint": "为 SSH 控制台不是 POSIX shell 的设备启用（如 MikroTik RouterOS、Cisco IOS）。发送命令时不加 shell 引号。",
     "containerLabel": "容器名称 / ID",
     "containerPlaceholder": "my-container",
     "imageLabel": "镜像",

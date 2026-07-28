@@ -83,6 +83,7 @@ func (b *SSHBackend) OpenSession(ctx context.Context, sessionID string) (worksta
 		client:  client,
 		release: release,
 		wsKey:   b.ws.WorkstationKey,
+		raw:     b.meta.RawCommand,
 	}, nil
 }
 

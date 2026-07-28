@@ -51,6 +51,8 @@
     "fingerprintLabel": "Known Hosts Fingerprint (optional)",
     "fingerprintPlaceholder": "SHA256:...",
     "fingerprintHint": "Leave empty to trust on first connect (TOFU); the fingerprint is logged so you can pin it later.",
+    "rawCommandLabel": "Raw command (non-POSIX shell)",
+    "rawCommandHint": "Enable for devices whose SSH console is not a POSIX shell (e.g. MikroTik RouterOS, Cisco IOS). Sends commands without shell quoting.",
     "containerLabel": "Container Name / ID",
     "containerPlaceholder": "my-container",
     "imageLabel": "Image",

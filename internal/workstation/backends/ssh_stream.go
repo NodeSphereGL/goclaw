@@ -19,6 +19,9 @@ type SSHSession struct {
 	client  *ssh.Client
 	release func()
 	wsKey   string
+	// raw sends the command verbatim (no POSIX shell quoting) for non-shell
+	// targets such as RouterOS. Set from SSHMetadata.RawCommand.
+	raw bool
 }
 
 // ID returns the session identifier.
@@ -60,9 +63,10 @@ func (s *SSHSession) Exec(ctx context.Context, req workstation.ExecRequest) (wor
 		return nil, fmt.Errorf("ssh[%s]: stderr pipe: %w", s.wsKey, err)
 	}
 
-	cmdStr := buildCmdString(req)
-	if envPrefixBuilder.Len() > 0 {
+	cmdStr := buildCmdString(req, s.raw)
+	if envPrefixBuilder.Len() > 0 && !s.raw {
 		// Prepend rejected-env exports so CLAUDE_CONFIG_DIR and other vars are available.
+		// Skipped in raw mode: non-POSIX targets (RouterOS) don't understand "export".
 		cmdStr = envPrefixBuilder.String() + cmdStr
 	}
 	if err := sess.Start(cmdStr); err != nil {
@@ -93,10 +97,18 @@ func (s *SSHSession) Close(_ context.Context) error {
 	return nil
 }
 
-// buildCmdString composes a shell command string from an ExecRequest.
+// buildCmdString composes a command string from an ExecRequest.
 // CWD is prepended as "cd <cwd> && <cmd> <args>".
 // Note: SSH protocol delivers a single string to the remote shell — no true argv.
-func buildCmdString(req workstation.ExecRequest) string {
+//
+// When raw is true the command and args are joined verbatim with spaces and no
+// quoting or CWD prefix is applied. This targets non-POSIX SSH consoles (e.g.
+// RouterOS), where shell quoting yields "expected command name" parse errors.
+func buildCmdString(req workstation.ExecRequest, raw bool) string {
+	if raw {
+		parts := append([]string{req.Cmd}, req.Args...)
+		return strings.Join(parts, " ")
+	}
 	parts := make([]string, 0, 1+len(req.Args))
 	parts = append(parts, shellQuote(req.Cmd))
 	for _, a := range req.Args {

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -46,6 +47,7 @@ export function WorkstationCreateDialog({
   const [privateKey, setPrivateKey] = useState("");
   const [password, setPassword] = useState("");
   const [fingerprint, setFingerprint] = useState("");
+  const [rawCommand, setRawCommand] = useState(false);
   // Docker fields
   const [container, setContainer] = useState("");
   const [image, setImage] = useState("");
@@ -64,6 +66,7 @@ export function WorkstationCreateDialog({
     setPrivateKey("");
     setPassword("");
     setFingerprint("");
+    setRawCommand(false);
     setContainer("");
     setImage("");
     setSocketPath("");
@@ -92,6 +95,7 @@ export function WorkstationCreateDialog({
         ...(privateKey.trim() ? { privateKey: privateKey.trim() } : {}),
         ...(password.trim() ? { password: password.trim() } : {}),
         ...(fingerprint.trim() ? { knownHostsFingerprint: fingerprint.trim() } : {}),
+        ...(rawCommand ? { rawCommand: true } : {}),
       };
     } else {
       if (!container.trim() && !socketPath.trim()) {
@@ -240,6 +244,13 @@ export function WorkstationCreateDialog({
                     className="text-base md:text-sm"
                   />
                   <p className="text-xs text-muted-foreground">{t("createDialog.fingerprintHint")}</p>
+                </div>
+                <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="ws-raw">{t("createDialog.rawCommandLabel")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("createDialog.rawCommandHint")}</p>
+                  </div>
+                  <Switch id="ws-raw" checked={rawCommand} onCheckedChange={setRawCommand} />
                 </div>
               </>
             )}
