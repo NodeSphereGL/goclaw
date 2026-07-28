@@ -156,6 +156,7 @@ func (c *AllowlistChecker) CheckEnv(ctx context.Context, ws *store.Workstation, 
 // MatchAllowedBinary returns true if pattern matches the binary name.
 //
 // Matching rules (argv[0] binary name, NOT full command string):
+//   - Allow-all:     "**"      matches any binary (explicit opt-in escape hatch)
 //   - Exact match:   "git"     matches "git"
 //   - Prefix glob:   "python*" matches "python3", "python3.11", "python"
 //   - No catch-all:  "*" alone is rejected as too permissive — returns false
@@ -164,7 +165,17 @@ func (c *AllowlistChecker) CheckEnv(ctx context.Context, ws *store.Workstation, 
 //   - Shell injection requires a shell; the SSH backend uses argv exec (no sh -c).
 //   - Argument validation is the remote shell's / OS's responsibility once the
 //     binary is allowed.
+//
+// The "**" sentinel is a deliberate, opt-in allow-all for workstations the
+// operator fully trusts (e.g. gated by a separate exec-confirmation step). The
+// hard safety checks in Check (blocked env keys, launcher-with-args, NUL/CRLF,
+// rate limits) still apply even when "**" is present.
 func MatchAllowedBinary(pattern, binaryName string) bool {
+	// Explicit allow-all sentinel. Distinct from the lone "*" so that allow-all
+	// is always a conscious choice, never an accidental single-star typo.
+	if pattern == "**" {
+		return true
+	}
 	// Reject the lone wildcard — it would allow everything including shells.
 	if pattern == "*" {
 		return false
