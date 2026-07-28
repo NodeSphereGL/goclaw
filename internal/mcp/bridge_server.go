@@ -48,6 +48,11 @@ var BridgeToolNames = map[string]bool{
 	"sessions_send":    true,
 	// Team tools (context from X-Agent-ID/X-Channel/X-Chat-ID headers)
 	"team_tasks": true,
+	// Workstations (remote command execution over SSH/Docker; Standard edition).
+	// Registered in the shared registry only when the edition + stores allow it,
+	// so reg.Get skips them gracefully on editions where they are absent.
+	"workstation_exec": true,
+	"claude_remote":    true,
 }
 
 // NewBridgeServer creates a StreamableHTTPServer that exposes GoClaw tools as MCP tools.
