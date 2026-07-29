@@ -136,6 +136,7 @@ func FactoryWithPendingStore(pendingStore store.PendingMessageStore) channels.Ch
 			ChatBehavior:   ic.ChatBehavior,
 			DebounceDelay:  ic.DebounceDelay,
 			ThreadTTL:      ic.ThreadTTL,
+			ReplyInThread:  ic.ReplyInThread,
 		}
 
 		if slackCfg.GroupPolicy == "" {
