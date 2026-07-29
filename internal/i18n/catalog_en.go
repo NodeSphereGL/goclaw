@@ -264,6 +264,7 @@ func init() {
 		MsgInvalidMetadataShape:    "invalid metadata for %s backend: %s",
 		MsgWorkstationRequired:     "no workstation bound to agent; pass workstation_id",
 		MsgWorkstationAccessDenied: "agent %s not authorized for workstation %s",
+		MsgWorkstationLinkNotFound: "agent %s is not linked to workstation %s",
 		MsgBackendNotReady:         "workstation backend not ready: %s",
 
 		// Webhooks

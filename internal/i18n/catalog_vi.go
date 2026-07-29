@@ -289,6 +289,7 @@ func init() {
 		MsgInvalidMetadataShape:    "metadata không hợp lệ cho backend %s: %s",
 		MsgWorkstationRequired:     "agent chưa được gắn máy trạm; hãy truyền workstation_id",
 		MsgWorkstationAccessDenied: "agent %s không được phép truy cập máy trạm %s",
+		MsgWorkstationLinkNotFound: "agent %s chưa được liên kết với máy trạm %s",
 		MsgBackendNotReady:         "backend máy trạm chưa sẵn sàng: %s",
 
 		MsgHookInvalidMatcher:          "biểu thức regex matcher không hợp lệ: %s",

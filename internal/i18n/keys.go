@@ -343,6 +343,7 @@ const (
 	MsgInvalidMetadataShape    = "error.invalid_metadata_shape"    // "invalid metadata for %s backend: %s"
 	MsgWorkstationRequired     = "error.workstation_required"      // "no workstation bound to agent; pass workstation_id"
 	MsgWorkstationAccessDenied = "error.workstation_access_denied" // "agent %s not authorized for workstation %s"
+	MsgWorkstationLinkNotFound = "error.workstation_link_not_found" // "agent %s is not linked to workstation %s"
 	MsgBackendNotReady         = "error.backend_not_ready"         // "workstation backend not ready: %s"
 
 	// --- Hooks ---

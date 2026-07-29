@@ -272,6 +272,23 @@
       "memoryHint": "Bộ nhớ episodic + tự động chèn L0",
       "retrievalTitle": "Truy Xuất",
       "retrievalHint": "Tải tri thức tiến dần L0/L1/L2"
+    },
+    "workstations": {
+      "title": "Máy trạm",
+      "description": "Các máy từ xa mà agent này có thể chạy lệnh. Máy mặc định được dùng khi không chỉ định máy trạm.",
+      "empty": "Chưa liên kết máy trạm nào.",
+      "default": "Mặc định",
+      "inactive": "Ngừng hoạt động",
+      "allowAll": "Cho phép tất cả",
+      "allowAllHint": "Cho phép mọi lệnh trên máy trạm này (áp dụng cho mọi agent dùng nó).",
+      "setDefault": "Đặt mặc định",
+      "unlink": "Gỡ liên kết",
+      "selectPlaceholder": "Chọn máy trạm…",
+      "linkAction": "Liên kết",
+      "unlinkConfirmTitle": "Gỡ liên kết máy trạm",
+      "unlinkConfirm": "Gỡ \"{{name}}\" khỏi agent này?",
+      "unlinkDefaultConfirm": "\"{{name}}\" đang là mặc định. Gỡ nó sẽ tự chuyển một máy trạm khác thành mặc định. Tiếp tục?",
+      "actionFailed": "Thao tác máy trạm thất bại"
     }
   },
   "general": {

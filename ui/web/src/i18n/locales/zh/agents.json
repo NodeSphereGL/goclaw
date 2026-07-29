@@ -272,6 +272,23 @@
       "memoryHint": "情景记忆 + L0自动注入",
       "retrievalTitle": "检索",
       "retrievalHint": "L0/L1/L2渐进式知识加载"
+    },
+    "workstations": {
+      "title": "工作站",
+      "description": "此 Agent 可执行命令的远程机器。未指定工作站时使用默认工作站。",
+      "empty": "尚未关联任何工作站。",
+      "default": "默认",
+      "inactive": "未激活",
+      "allowAll": "允许全部",
+      "allowAllHint": "允许在此工作站执行任意命令（对使用它的所有 Agent 生效）。",
+      "setDefault": "设为默认",
+      "unlink": "取消关联",
+      "selectPlaceholder": "选择工作站…",
+      "linkAction": "关联",
+      "unlinkConfirmTitle": "取消关联工作站",
+      "unlinkConfirm": "将 \"{{name}}\" 从此 Agent 取消关联？",
+      "unlinkDefaultConfirm": "\"{{name}}\" 是默认工作站。取消关联后将自动把另一个已关联工作站设为默认。是否继续？",
+      "actionFailed": "工作站操作失败"
     }
   },
   "general": {

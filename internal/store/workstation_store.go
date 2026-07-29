@@ -3,11 +3,16 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// ErrAgentWorkstationLinkNotFound is returned when an operation targets an
+// agent↔workstation link that does not exist (e.g. SetDefault on an unlinked pair).
+var ErrAgentWorkstationLinkNotFound = errors.New("agent_workstation_link not found")
 
 // SanitizedWorkstation is the safe API view of a Workstation — no secret fields.
 // Used in all HTTP/WS responses to prevent credentials from reaching clients.
@@ -102,6 +107,18 @@ type AgentWorkstationLink struct {
 	TenantID      uuid.UUID `json:"tenantId"`
 	IsDefault     bool      `json:"isDefault"`
 	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// AgentWorkstationLinkView is a link joined with its workstation's display fields.
+// Returned by ListForAgentWithWorkstation so the UI can render links without an
+// extra GetByID per row (avoids N+1).
+type AgentWorkstationLinkView struct {
+	WorkstationID  uuid.UUID          `json:"workstationId"`
+	WorkstationKey string             `json:"workstationKey"`
+	Name           string             `json:"name"`
+	BackendType    WorkstationBackend `json:"backendType"`
+	Active         bool               `json:"active"`
+	IsDefault      bool               `json:"isDefault"`
 }
 
 // SSHMetadata contains SSH-specific connection parameters.
@@ -212,12 +229,19 @@ type WorkstationStore interface {
 type AgentWorkstationLinkStore interface {
 	// Link creates a binding between an agent and a workstation.
 	Link(ctx context.Context, link *AgentWorkstationLink) error
-	// Unlink removes the binding.
+	// Unlink removes the binding. If the removed link was the agent's default and
+	// other links remain, the oldest remaining link is promoted to default so the
+	// agent keeps exactly one default (exec resolution invariant).
 	Unlink(ctx context.Context, agentID, workstationID uuid.UUID) error
 	// SetDefault marks a workstation as default for an agent (clears prior default).
+	// Returns ErrAgentWorkstationLinkNotFound if the agent is not linked to the
+	// workstation; the prior default is left untouched in that case.
 	SetDefault(ctx context.Context, agentID, workstationID uuid.UUID) error
 	// ListForAgent returns all workstations linked to an agent.
 	ListForAgent(ctx context.Context, agentID uuid.UUID) ([]AgentWorkstationLink, error)
+	// ListForAgentWithWorkstation returns links joined with workstation display
+	// fields in a single query (name/key/backend/active), ordered by created_at.
+	ListForAgentWithWorkstation(ctx context.Context, agentID uuid.UUID) ([]AgentWorkstationLinkView, error)
 	// ListForWorkstation returns all agents linked to a workstation.
 	ListForWorkstation(ctx context.Context, workstationID uuid.UUID) ([]AgentWorkstationLink, error)
 }

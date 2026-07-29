@@ -193,6 +193,8 @@ export const Methods = {
   WORKSTATIONS_TEST: "workstations.testConnection",
   WORKSTATIONS_LINK_AGENT: "workstations.linkAgent",
   WORKSTATIONS_UNLINK_AGENT: "workstations.unlinkAgent",
+  WORKSTATIONS_LIST_LINKS: "workstations.listLinks",
+  WORKSTATIONS_SET_DEFAULT: "workstations.setDefault",
   // Phase 6: permissions
   WORKSTATIONS_PERMS_LIST: "workstations.permissions.list",
   WORKSTATIONS_PERMS_ADD: "workstations.permissions.add",
