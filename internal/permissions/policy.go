@@ -294,6 +294,7 @@ func isAdminMethod(method string) bool {
 		protocol.MethodWorkstationsDelete,
 		protocol.MethodWorkstationsLinkAgent,
 		protocol.MethodWorkstationsUnlinkAgent,
+		protocol.MethodWorkstationsSetDefault,
 		protocol.MethodWorkstationsPermAdd,
 		protocol.MethodWorkstationsPermRemove,
 		protocol.MethodWorkstationsPermToggle,
@@ -446,6 +447,7 @@ func isReadMethod(method string) bool {
 		// Workstations read
 		protocol.MethodWorkstationsList,
 		protocol.MethodWorkstationsGet,
+		protocol.MethodWorkstationsListLinks,
 		protocol.MethodWorkstationsPermList,
 		protocol.MethodWorkstationsListActivity,
 	}
