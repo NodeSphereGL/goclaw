@@ -248,6 +248,23 @@
       "noDelegates": "No delegate targets configured. Agent uses self-clone (spawn) mode.",
       "team": "Team"
     },
+    "workstations": {
+      "title": "Workstations",
+      "description": "Remote machines this agent can run commands on. The default is used when no workstation is specified.",
+      "empty": "No workstations linked.",
+      "default": "Default",
+      "inactive": "Inactive",
+      "allowAll": "Allow all",
+      "allowAllHint": "Allow any command on this workstation (applies to every agent that uses it).",
+      "setDefault": "Set default",
+      "unlink": "Unlink",
+      "selectPlaceholder": "Select a workstation…",
+      "linkAction": "Link",
+      "unlinkConfirmTitle": "Unlink workstation",
+      "unlinkConfirm": "Unlink \"{{name}}\" from this agent?",
+      "unlinkDefaultConfirm": "\"{{name}}\" is the default. Unlinking it will promote another linked workstation to default. Continue?",
+      "actionFailed": "Workstation action failed"
+    },
     "evolution": {
       "title": "Evolution",
       "metricsLabel": "Evolution Metrics",

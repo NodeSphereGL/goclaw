@@ -51,6 +51,8 @@ func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodWorkstationsTest, m.adminOnly(m.handleTestConnection))
 	router.Register(protocol.MethodWorkstationsLinkAgent, m.adminOnly(m.handleLinkAgent))
 	router.Register(protocol.MethodWorkstationsUnlinkAgent, m.adminOnly(m.handleUnlinkAgent))
+	router.Register(protocol.MethodWorkstationsListLinks, m.adminOnly(m.handleListLinks))
+	router.Register(protocol.MethodWorkstationsSetDefault, m.adminOnly(m.handleSetDefault))
 	// Phase 6: permission allowlist CRUD
 	router.Register(protocol.MethodWorkstationsPermList, m.adminOnly(m.handlePermList))
 	router.Register(protocol.MethodWorkstationsPermAdd, m.adminOnly(m.handlePermAdd))
@@ -295,17 +297,37 @@ func (m *WorkstationsMethods) handleLinkAgent(ctx context.Context, client *gatew
 			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
 		return
 	}
+	// Ownership check: GetByID is tenant-scoped — rejects a workstation in another tenant.
+	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	// Derive default server-side: the agent's first link becomes its default so
+	// exec resolution always has one. The client's isDefault is not trusted —
+	// setting a second default here would violate the unique partial index.
+	existing, err := m.linkStore.ListForAgent(ctx, agentID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
 	link := &store.AgentWorkstationLink{
 		AgentID:       agentID,
 		WorkstationID: wsID,
-		IsDefault:     params.IsDefault,
+		IsDefault:     len(existing) == 0,
 	}
 	if err := m.linkStore.Link(ctx, link); err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
 			i18n.T(locale, i18n.MsgFailedToCreate, "agent_workstation_link", err.Error())))
 		return
 	}
-	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"linked": true}))
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"linked": true, "isDefault": link.IsDefault}))
 }
 
 func (m *WorkstationsMethods) handleUnlinkAgent(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -338,6 +360,83 @@ func (m *WorkstationsMethods) handleUnlinkAgent(ctx context.Context, client *gat
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"unlinked": true}))
+}
+
+func (m *WorkstationsMethods) handleListLinks(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params struct {
+		AgentID string `json:"agentId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	agentID, err := uuid.Parse(params.AgentID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "agent")))
+		return
+	}
+	links, err := m.linkStore.ListForAgentWithWorkstation(ctx, agentID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "agent_workstation_links")))
+		return
+	}
+	if links == nil {
+		links = []store.AgentWorkstationLinkView{}
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"links": links}))
+}
+
+func (m *WorkstationsMethods) handleSetDefault(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params struct {
+		AgentID       string `json:"agentId"`
+		WorkstationID string `json:"workstationId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	agentID, err := uuid.Parse(params.AgentID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "agent")))
+		return
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	// Ownership check: GetByID is tenant-scoped.
+	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	if err := m.linkStore.SetDefault(ctx, agentID, wsID); err != nil {
+		if errors.Is(err, store.ErrAgentWorkstationLinkNotFound) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationLinkNotFound, params.AgentID, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "agent_workstation_link", err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"agentId": agentID, "workstationId": wsID, "isDefault": true}))
 }
 
 // --- Phase 6: workstation permission allowlist CRUD ---

@@ -289,6 +289,7 @@ func init() {
 		MsgInvalidMetadataShape:    "%s 后端的元数据无效：%s",
 		MsgWorkstationRequired:     "Agent 未绑定工作站，请提供 workstation_id",
 		MsgWorkstationAccessDenied: "Agent %s 无权访问工作站 %s",
+		MsgWorkstationLinkNotFound: "Agent %s 尚未关联工作站 %s",
 		MsgBackendNotReady:         "工作站后端未就绪：%s",
 
 		MsgHookInvalidMatcher:          "无效的匹配器正则表达式: %s",

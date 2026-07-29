@@ -155,6 +155,38 @@ func TestCanAccess_ReadMethods_AnyRole(t *testing.T) {
 	}
 }
 
+// TestCanAccess_WorkstationLinkMethods pins the RBAC classification for the
+// agent↔workstation link RPCs. Regression guard: these were once unclassified,
+// so MethodRole returned RoleNone and even owner was denied (fail-closed),
+// which silently hid the workstation UI section.
+func TestCanAccess_WorkstationLinkMethods(t *testing.T) {
+	pe := NewPolicyEngine(nil)
+
+	// listLinks is read-only → every role including viewer may call it.
+	if got := MethodRole(protocol.MethodWorkstationsListLinks); got != RoleViewer {
+		t.Fatalf("MethodRole(listLinks) = %q, want RoleViewer", got)
+	}
+	for _, role := range []Role{RoleViewer, RoleOperator, RoleAdmin, RoleOwner} {
+		if !pe.CanAccess(role, protocol.MethodWorkstationsListLinks) {
+			t.Fatalf("%s should access workstations.listLinks", role)
+		}
+	}
+
+	// setDefault mutates a binding → admin/owner only.
+	if got := MethodRole(protocol.MethodWorkstationsSetDefault); got != RoleAdmin {
+		t.Fatalf("MethodRole(setDefault) = %q, want RoleAdmin", got)
+	}
+	if !pe.CanAccess(RoleOwner, protocol.MethodWorkstationsSetDefault) {
+		t.Fatal("owner should access workstations.setDefault")
+	}
+	if !pe.CanAccess(RoleAdmin, protocol.MethodWorkstationsSetDefault) {
+		t.Fatal("admin should access workstations.setDefault")
+	}
+	if pe.CanAccess(RoleOperator, protocol.MethodWorkstationsSetDefault) {
+		t.Fatal("operator should NOT access workstations.setDefault")
+	}
+}
+
 // TestCanAccess_UnknownMethod_DeniedForAll locks in the fail-closed behavior
 // introduced by issue #866: any method not present in the public / admin /
 // write / read allowlists MUST be denied for every role including owner.
