@@ -233,7 +233,7 @@ func (s *Server) BuildMux() *http.ServeMux {
 	return mux
 }
 
-// bridgeContextMiddleware extracts X-Agent-ID, X-User-ID, and X-Workspace headers
+// bridgeContextMiddleware extracts X-Agent-ID, X-User-ID, X-Sender-ID, and X-Workspace headers
 // from the MCP bridge request and injects them into the context so bridge tools can
 // access agent/user scope and resolve workspace-relative paths.
 // When a gateway token is configured, the context headers must be accompanied by
@@ -243,6 +243,7 @@ func bridgeContextMiddleware(gatewayToken string, agentStore store.AgentStore, n
 		ctx := r.Context()
 		agentIDStr := r.Header.Get("X-Agent-ID")
 		userID := r.Header.Get("X-User-ID")
+		senderID := r.Header.Get("X-Sender-ID")
 		channel := r.Header.Get("X-Channel")
 		chatID := r.Header.Get("X-Chat-ID")
 		peerKind := r.Header.Get("X-Peer-Kind")
@@ -262,7 +263,7 @@ func bridgeContextMiddleware(gatewayToken string, agentStore store.AgentStore, n
 			// Verify HMAC signature over all context fields.
 			tenantIDStr := r.Header.Get("X-Tenant-ID")
 			sig := r.Header.Get("X-Bridge-Sig")
-			ok, tenantVerified := providers.VerifyBridgeContext(gatewayToken, agentIDStr, userID, channel, chatID, peerKind, workspace, tenantIDStr, sig, localKey, sessionKey)
+			ok, tenantVerified := providers.VerifyBridgeContextWithSender(gatewayToken, agentIDStr, userID, senderID, channel, chatID, peerKind, workspace, tenantIDStr, sig, localKey, sessionKey)
 			if !ok {
 				slog.Warn("security.mcp_bridge: invalid bridge context signature",
 					"agent_id", agentIDStr, "user_id", userID)
@@ -294,6 +295,9 @@ func bridgeContextMiddleware(gatewayToken string, agentStore store.AgentStore, n
 			}
 			if userID != "" {
 				ctx = store.WithUserID(ctx, userID)
+			}
+			if senderID != "" {
+				ctx = store.WithSenderID(ctx, senderID)
 			}
 			// Only inject tenant_id when HMAC actually covers it (level 1).
 			// Fallback levels (pre-tenantID sessions) must not trust unsigned tenant headers.

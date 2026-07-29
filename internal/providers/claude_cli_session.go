@@ -172,6 +172,7 @@ func bridgeContextFromOpts(opts map[string]any) BridgeContext {
 	return BridgeContext{
 		AgentID:   extractStringOpt(opts, OptAgentID),
 		UserID:    extractStringOpt(opts, OptUserID),
+		SenderID:  extractStringOpt(opts, OptSenderID),
 		Channel:   extractStringOpt(opts, OptChannel),
 		ChatID:    extractStringOpt(opts, OptChatID),
 		PeerKind:  extractStringOpt(opts, OptPeerKind),

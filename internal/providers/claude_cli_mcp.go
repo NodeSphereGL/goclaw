@@ -86,6 +86,7 @@ func mcpConfigBaseDir() string {
 type BridgeContext struct {
 	AgentID   string
 	UserID    string
+	SenderID  string
 	Channel   string
 	ChatID    string
 	PeerKind  string
@@ -99,10 +100,10 @@ type BridgeContext struct {
 // outside the agent's workDir so tokens are not exposed.
 // Skips write if content is unchanged. Returns the file path.
 func (d *MCPConfigData) WriteMCPConfig(ctx context.Context, sessionKey string, bc BridgeContext) string {
-	return d.writeMCPConfigInternal(ctx, sessionKey, bc.AgentID, bc.UserID, bc.Channel, bc.ChatID, bc.PeerKind, bc.Workspace, bc.TenantID, bc.LocalKey)
+	return d.writeMCPConfigInternal(ctx, sessionKey, bc.AgentID, bc.UserID, bc.SenderID, bc.Channel, bc.ChatID, bc.PeerKind, bc.Workspace, bc.TenantID, bc.LocalKey)
 }
 
-func (d *MCPConfigData) writeMCPConfigInternal(ctx context.Context, sessionKey, agentID, userID, channel, chatID, peerKind, workspace, tenantID, localKey string) string {
+func (d *MCPConfigData) writeMCPConfigInternal(ctx context.Context, sessionKey, agentID, userID, senderID, channel, chatID, peerKind, workspace, tenantID, localKey string) string {
 	if d == nil || (len(d.Servers) == 0 && d.GatewayAddr == "" && d.AgentMCPLookup == nil) {
 		return ""
 	}
@@ -137,6 +138,9 @@ func (d *MCPConfigData) writeMCPConfigInternal(ctx context.Context, sessionKey, 
 		if userID != "" && !strings.ContainsAny(userID, "\r\n\x00") {
 			headers["X-User-ID"] = userID
 		}
+		if senderID != "" && !strings.ContainsAny(senderID, "\r\n\x00") {
+			headers["X-Sender-ID"] = senderID
+		}
 		if channel != "" && !strings.ContainsAny(channel, "\r\n\x00") {
 			headers["X-Channel"] = channel
 		}
@@ -160,7 +164,7 @@ func (d *MCPConfigData) writeMCPConfigInternal(ctx context.Context, sessionKey, 
 		}
 		// HMAC signature over all context fields to prevent header forgery
 		if d.GatewayToken != "" && (agentID != "" || userID != "") {
-			headers["X-Bridge-Sig"] = SignBridgeContext(d.GatewayToken, agentID, userID, channel, chatID, peerKind, workspace, tenantID, localKey, sessionKey)
+			headers["X-Bridge-Sig"] = SignBridgeContextWithSender(d.GatewayToken, agentID, userID, senderID, channel, chatID, peerKind, workspace, tenantID, localKey, sessionKey)
 		}
 
 		bridgeEntry := map[string]any{
@@ -262,7 +266,8 @@ func sanitizePathSegment(s string) string {
 	return safe
 }
 
-// SignBridgeContext computes HMAC-SHA256 over all bridge context fields to prevent forgery.
+// SignBridgeContext computes the legacy HMAC-SHA256 bridge signature. It is retained
+// to authenticate existing MCP config files that predate sender propagation.
 // Payload: agentID|userID|channel|chatID|peerKind|workspace|tenantID
 func SignBridgeContext(key, agentID, userID, channel, chatID, peerKind, workspace, tenantID string, extra ...string) string {
 	mac := hmac.New(sha256.New, []byte(key))
@@ -273,6 +278,32 @@ func SignBridgeContext(key, agentID, userID, channel, chatID, peerKind, workspac
 	}
 	mac.Write([]byte(payload.String()))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// SignBridgeContextWithSender computes the current HMAC-SHA256 bridge signature.
+// The individual sender is signed separately from UserID because UserID is a shared
+// group principal for group conversations.
+func SignBridgeContextWithSender(key, agentID, userID, senderID, channel, chatID, peerKind, workspace, tenantID string, extra ...string) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	var payload strings.Builder
+	payload.WriteString(agentID + "|" + userID + "|" + senderID + "|" + channel + "|" + chatID + "|" + peerKind + "|" + workspace + "|" + tenantID)
+	for _, e := range extra {
+		payload.WriteString("|" + e)
+	}
+	mac.Write([]byte(payload.String()))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// VerifyBridgeContextWithSender verifies the current sender-bound signature. Legacy
+// signatures remain valid only if no sender header was supplied, preventing a caller
+// from attaching an unsigned sender identity to an old valid bridge request.
+func VerifyBridgeContextWithSender(key, agentID, userID, senderID, channel, chatID, peerKind, workspace, tenantID, sig string, extra ...string) (bool, bool) {
+	if senderID == "" {
+		return VerifyBridgeContext(key, agentID, userID, channel, chatID, peerKind, workspace, tenantID, sig, extra...)
+	}
+
+	expected := SignBridgeContextWithSender(key, agentID, userID, senderID, channel, chatID, peerKind, workspace, tenantID, extra...)
+	return hmac.Equal([]byte(expected), []byte(sig)), true
 }
 
 // VerifyBridgeContext checks the HMAC signature against the expected bridge context.

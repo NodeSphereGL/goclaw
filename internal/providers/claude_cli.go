@@ -20,6 +20,11 @@ const OptAgentID = "agent_id"
 // OptUserID passes the user ID string for per-session MCP config.
 const OptUserID = "user_id"
 
+// OptSenderID passes the individual channel sender ID for per-session MCP config.
+// In group chats OptUserID is the shared group principal, while this value identifies
+// the person whose permission must be checked for an action.
+const OptSenderID = "sender_id"
+
 // OptChannel passes the source channel (telegram, discord, etc.) for MCP bridge context.
 const OptChannel = "channel"
 

@@ -41,8 +41,9 @@ func (c *Channel) Send(_ context.Context, msg bus.OutboundMessage) error {
 
 	content := msg.Content
 
-	// NO_REPLY: delete placeholder, return
-	if content == "" {
+	// NO_REPLY: delete placeholder, return. A media-only outbound message is a
+	// valid delivery and must continue to the attachment upload below.
+	if content == "" && len(msg.Media) == 0 {
 		if pTS, ok := c.placeholders.Load(placeholderKey); ok {
 			c.placeholders.Delete(placeholderKey)
 			ts := pTS.(string)
@@ -52,6 +53,15 @@ func (c *Channel) Send(_ context.Context, msg bus.OutboundMessage) error {
 	}
 
 	content = markdownToSlackMrkdwn(content)
+	if content == "" {
+		if pTS, ok := c.placeholders.Load(placeholderKey); ok {
+			c.placeholders.Delete(placeholderKey)
+			ts := pTS.(string)
+			_, _, _ = c.api.DeleteMessage(channelID, ts)
+		}
+		c.sendMedia(channelID, threadTS, msg.Media)
+		return nil
+	}
 
 	// Edit placeholder with first chunk, send rest as follow-ups
 	if pTS, ok := c.placeholders.Load(placeholderKey); ok {
@@ -67,8 +77,11 @@ func (c *Channel) Send(_ context.Context, msg bus.OutboundMessage) error {
 
 		if _, _, _, editErr := c.api.UpdateMessage(channelID, ts, opts...); editErr == nil {
 			if remaining != "" {
-				return c.sendChunked(channelID, remaining, threadTS)
+				if err := c.sendChunked(channelID, remaining, threadTS); err != nil {
+					return err
+				}
 			}
+			c.sendMedia(channelID, threadTS, msg.Media)
 			return nil
 		} else {
 			slog.Warn("slack placeholder edit failed, sending new message",
@@ -76,16 +89,23 @@ func (c *Channel) Send(_ context.Context, msg bus.OutboundMessage) error {
 		}
 	}
 
-	// Handle media attachments
-	for _, media := range msg.Media {
+	c.sendMedia(channelID, threadTS, msg.Media)
+
+	return c.sendChunked(channelID, content, threadTS)
+}
+
+// sendMedia uploads attachments without preventing the accompanying text reply
+// from being delivered when an individual upload fails.
+func (c *Channel) sendMedia(channelID, threadTS string, mediaAttachments []bus.MediaAttachment) {
+	for _, media := range mediaAttachments {
 		if err := c.uploadFile(channelID, threadTS, media); err != nil {
 			slog.Warn("slack: file upload failed",
 				"file", media.URL, "error", err)
-			c.sendChunked(channelID, fmt.Sprintf("[File upload failed: %s]", media.URL), threadTS)
+			if err := c.sendChunked(channelID, fmt.Sprintf("[File upload failed: %s]", media.URL), threadTS); err != nil {
+				slog.Warn("slack: failed to send file upload error", "file", media.URL, "error", err)
+			}
 		}
 	}
-
-	return c.sendChunked(channelID, content, threadTS)
 }
 
 // sendChunked sends message chunks using markdown-aware splitting.

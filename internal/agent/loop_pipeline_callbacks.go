@@ -302,6 +302,11 @@ func (l *Loop) makeCallLLM(req *RunRequest, emitRun func(AgentEvent)) func(ctx c
 		chatReq.Options[providers.OptSessionKey] = req.SessionKey
 		chatReq.Options[providers.OptAgentID] = l.agentUUID.String()
 		chatReq.Options[providers.OptUserID] = req.UserID
+
+		// Keep the individual actor distinct from the shared group UserID. Claude CLI
+		// receives these options through its MCP bridge configuration, where file-write
+		// permission checks require the original sender in group conversations.
+		chatReq.Options[providers.OptSenderID] = req.SenderID
 		chatReq.Options[providers.OptChannel] = req.Channel
 		chatReq.Options[providers.OptChatID] = req.ChatID
 		chatReq.Options[providers.OptPeerKind] = req.PeerKind

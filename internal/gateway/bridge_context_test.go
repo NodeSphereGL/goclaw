@@ -88,3 +88,62 @@ func TestBridgeContextMiddleware_NoStore_NoAgentKey(t *testing.T) {
 		t.Errorf("ToolAgentKeyFromCtx = %q, want empty when no agent store is wired", gotKey)
 	}
 }
+
+func TestBridgeContextMiddleware_InjectsSignedSenderID(t *testing.T) {
+	const (
+		gatewayToken = "test-gateway-token"
+		userID       = "group:slack:C123"
+		senderID     = "U123"
+	)
+
+	var gotSenderID string
+	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotSenderID = store.SenderIDFromContext(r.Context())
+	})
+	mw := bridgeContextMiddleware(gatewayToken, nil, next)
+
+	sig := providers.SignBridgeContextWithSender(gatewayToken, "", userID, senderID, "slack", "C123", "group", "", "", "", "")
+	req := httptest.NewRequest(http.MethodPost, "/mcp/bridge", nil)
+	req.Header.Set("X-User-ID", userID)
+	req.Header.Set("X-Sender-ID", senderID)
+	req.Header.Set("X-Channel", "slack")
+	req.Header.Set("X-Chat-ID", "C123")
+	req.Header.Set("X-Peer-Kind", "group")
+	req.Header.Set("X-Bridge-Sig", sig)
+
+	mw.ServeHTTP(httptest.NewRecorder(), req)
+
+	if gotSenderID != senderID {
+		t.Errorf("SenderIDFromContext = %q, want %q", gotSenderID, senderID)
+	}
+}
+
+func TestBridgeContextMiddleware_RejectsUnsignedSenderID(t *testing.T) {
+	const gatewayToken = "test-gateway-token"
+
+	handlerCalled := false
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		handlerCalled = true
+	})
+	mw := bridgeContextMiddleware(gatewayToken, nil, next)
+
+	// A legacy signature never covered X-Sender-ID and must not authorize it.
+	sig := providers.SignBridgeContext(gatewayToken, "", "group:slack:C123", "slack", "C123", "group", "", "", "", "")
+	req := httptest.NewRequest(http.MethodPost, "/mcp/bridge", nil)
+	req.Header.Set("X-User-ID", "group:slack:C123")
+	req.Header.Set("X-Sender-ID", "U123")
+	req.Header.Set("X-Channel", "slack")
+	req.Header.Set("X-Chat-ID", "C123")
+	req.Header.Set("X-Peer-Kind", "group")
+	req.Header.Set("X-Bridge-Sig", sig)
+	recorder := httptest.NewRecorder()
+
+	mw.ServeHTTP(recorder, req)
+
+	if handlerCalled {
+		t.Fatal("next handler was called for an unsigned sender ID")
+	}
+	if recorder.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+}

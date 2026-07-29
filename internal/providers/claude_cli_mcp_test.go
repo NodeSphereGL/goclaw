@@ -1,6 +1,9 @@
 package providers
 
 import (
+	"context"
+	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -32,6 +35,77 @@ func TestSignBridgeContext_FieldOrder(t *testing.T) {
 	sig2 := SignBridgeContext(key, "b", "a", "c", "d", "e", "f", "g")
 	if sig1 == sig2 {
 		t.Error("swapping field values should produce different signatures")
+	}
+}
+
+func TestSignBridgeContextWithSender_BindsSenderIdentity(t *testing.T) {
+	const key = "test-secret"
+	sig := SignBridgeContextWithSender(key, "agent1", "group:slack:C123", "U123", "slack", "C123", "group", "/workspace", "tenant-abc", "", "session-abc")
+
+	ok, tenantVerified := VerifyBridgeContextWithSender(key, "agent1", "group:slack:C123", "U123", "slack", "C123", "group", "/workspace", "tenant-abc", sig, "", "session-abc")
+	if !ok || !tenantVerified {
+		t.Fatalf("sender-bound signature was not accepted: ok=%v tenantVerified=%v", ok, tenantVerified)
+	}
+
+	ok, _ = VerifyBridgeContextWithSender(key, "agent1", "group:slack:C123", "U999", "slack", "C123", "group", "/workspace", "tenant-abc", sig, "", "session-abc")
+	if ok {
+		t.Fatal("signature with a substituted sender ID was accepted")
+	}
+}
+
+func TestBridgeContextFromOpts_PreservesSenderID(t *testing.T) {
+	bc := bridgeContextFromOpts(map[string]any{
+		OptAgentID:  "agent-uuid",
+		OptUserID:   "group:slack:C123",
+		OptSenderID: "U123",
+	})
+
+	if bc.SenderID != "U123" {
+		t.Errorf("BridgeContext.SenderID = %q, want %q", bc.SenderID, "U123")
+	}
+}
+
+func TestWriteMCPConfig_IncludesSignedSenderHeader(t *testing.T) {
+	t.Setenv("GOCLAW_DATA_DIR", t.TempDir())
+	const (
+		gatewayToken = "test-gateway-token"
+		userID       = "group:slack:C123"
+		senderID     = "U123"
+		sessionKey   = "session-abc"
+	)
+
+	d := &MCPConfigData{GatewayAddr: "127.0.0.1:18789", GatewayToken: gatewayToken}
+	path := d.WriteMCPConfig(context.Background(), sessionKey, BridgeContext{
+		AgentID:  "agent-uuid",
+		UserID:   userID,
+		SenderID: senderID,
+		Channel:  "slack",
+		ChatID:   "C123",
+		PeerKind: "group",
+	})
+	if path == "" {
+		t.Fatal("WriteMCPConfig returned an empty path")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", path, err)
+	}
+	var config struct {
+		Servers map[string]struct {
+			Headers map[string]string `json:"headers"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("unmarshal MCP config: %v", err)
+	}
+	headers := config.Servers["goclaw-bridge"].Headers
+	if headers["X-Sender-ID"] != senderID {
+		t.Errorf("X-Sender-ID = %q, want %q", headers["X-Sender-ID"], senderID)
+	}
+	wantSig := SignBridgeContextWithSender(gatewayToken, "agent-uuid", userID, senderID, "slack", "C123", "group", "", "", "", sessionKey)
+	if headers["X-Bridge-Sig"] != wantSig {
+		t.Error("X-Bridge-Sig does not bind the sender ID")
 	}
 }
 
