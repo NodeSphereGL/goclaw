@@ -111,6 +111,28 @@ Supported price units: input, output, cache read, cache write, reasoning, reques
 | byteplus | `https://ark.ap-southeast.bytepluses.com/api/v3` | `seed-2-0-lite-260228` | Seed 2.0 models |
 | byteplus_coding | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` | `seed-2-0-lite-260228` | Seed 2.0 Coding Plan |
 
+### Private local proxy endpoints
+
+Provider URLs that resolve to loopback, private, link-local, multicast, or
+unspecified addresses are blocked by default to prevent SSRF. If an
+OpenAI-compatible proxy is deliberately run on the same machine under a local
+DNS name, allow only that hostname before starting GoClaw:
+
+```bash
+export GOCLAW_ALLOWED_PRIVATE_PROVIDER_HOSTS=cli-proxy.nodesphere.net
+```
+
+Use a comma-separated list for multiple trusted hostnames. Values are hostnames
+only (no scheme, path, or port). This opt-in applies to non-local HTTP provider
+types such as `openai_compat`; `ollama` and `acp` retain their stricter local
+host allowlist. An allowlisted hostname is a trust boundary: only add DNS names
+you operate and continue to trust if their DNS records change. Restart GoClaw
+after changing the variable.
+
+`GOCLAW_ALLOW_PRIVATE_PROVIDER_URLS=true` remains available for deployments
+that intentionally trust every private provider URL, but it is broader and is
+not recommended when a hostname allowlist is sufficient.
+
 ---
 
 ## 3. Call Flow

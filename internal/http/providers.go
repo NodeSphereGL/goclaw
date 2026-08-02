@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -377,6 +378,30 @@ var allowPrivateProviderURLsFn = sync.OnceValue(func() bool {
 	return v == "1" || v == "true" || v == "yes"
 })
 
+// privateProviderAllowedHostsFn returns the operator-configured hostnames that
+// may resolve to private or loopback addresses for non-local provider types.
+// GOCLAW_ALLOWED_PRIVATE_PROVIDER_HOSTS is comma-separated and intentionally
+// host-only (for example, "cli-proxy.nodesphere.net"). This keeps the opt-in
+// narrower than GOCLAW_ALLOW_PRIVATE_PROVIDER_URLS, which permits every private
+// provider endpoint.
+//
+// Evaluated once at first call so tests can override the variable before that
+// happens.
+var privateProviderAllowedHostsFn = sync.OnceValue(func() []string {
+	return parsePrivateProviderAllowedHosts(os.Getenv("GOCLAW_ALLOWED_PRIVATE_PROVIDER_HOSTS"))
+})
+
+func parsePrivateProviderAllowedHosts(raw string) []string {
+	hosts := make([]string, 0)
+	for host := range strings.SplitSeq(raw, ",") {
+		host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+		if host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
+}
+
 // validateProviderURL rejects provider base URLs pointing to internal/private networks.
 // Defense-in-depth: prevents SSRF when providers are later used for API calls.
 //
@@ -388,10 +413,12 @@ var allowPrivateProviderURLsFn = sync.OnceValue(func() bool {
 //  4. Local URL types (ollama, acp) → host must be in allowedLocalHosts
 //     (explicit allowlist prevents reaching 169.254.169.254 or internal services
 //     via the local-type bypass).
-//  5. Remote types → if GOCLAW_ALLOW_PRIVATE_PROVIDER_URLS is set, allow and log.
-//     Otherwise: resolve DNS hostname; reject if ANY resolved IP satisfies
-//     security.IsBlocked (covers loopback, link-local, private, multicast,
-//     unspecified — including 0.0.0.0 and :: that earlier hand-rolled checks missed).
+//  5. Remote types → allow an exact operator-configured hostname from
+//     GOCLAW_ALLOWED_PRIVATE_PROVIDER_HOSTS. Otherwise, if
+//     GOCLAW_ALLOW_PRIVATE_PROVIDER_URLS is set, allow and log. Otherwise:
+//     resolve DNS hostname; reject if ANY resolved IP satisfies security.IsBlocked
+//     (covers loopback, link-local, private, multicast, unspecified — including
+//     0.0.0.0 and :: that earlier hand-rolled checks missed).
 //
 // DNS resolution on step 5 closes the nip.io / sslip.io / attacker-domain bypass
 // where a hostname passes a literal-string blocklist but resolves to a private IP.
@@ -426,6 +453,12 @@ func validateProviderURL(rawURL string, providerType string) error {
 		}
 		slog.Warn("security.provider_url.local_type_denied", "host", host, "provider_type", providerType)
 		return fmt.Errorf("provider type %q only allows localhost URLs (localhost, 127.0.0.1, ::1, host.docker.internal), got host %q", providerType, host)
+	}
+
+	canonicalHost := strings.TrimSuffix(strings.ToLower(host), ".")
+	if slices.Contains(privateProviderAllowedHostsFn(), canonicalHost) {
+		slog.Warn("security.provider_url.private_host_allowed", "host", host, "provider_type", providerType)
+		return nil
 	}
 
 	// Operator opt-in to allow private-network provider URLs (e.g. LAN-hosted vLLM).

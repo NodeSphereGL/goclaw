@@ -3,6 +3,7 @@ package http
 import (
 	"net"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -19,15 +20,17 @@ func stubResolver(m map[string][]string) func(host string) ([]string, error) {
 }
 
 // saveAndRestoreGlobals saves mutable package-level vars and restores them after
-// the test. Call at the start of any test that touches dnsResolverFn or
-// allowPrivateProviderURLsFn.
+// the test. Call at the start of any test that touches dnsResolverFn,
+// allowPrivateProviderURLsFn, or privateProviderAllowedHostsFn.
 func saveAndRestoreGlobals(t *testing.T) {
 	t.Helper()
 	origResolver := dnsResolverFn
 	origAllow := allowPrivateProviderURLsFn
+	origAllowedHosts := privateProviderAllowedHostsFn
 	t.Cleanup(func() {
 		dnsResolverFn = origResolver
 		allowPrivateProviderURLsFn = origAllow
+		privateProviderAllowedHostsFn = origAllowedHosts
 	})
 }
 
@@ -173,6 +176,44 @@ func TestValidateProviderURL_AllowPrivateFlag(t *testing.T) {
 			t.Errorf("expected scheme error, got: %v", err)
 		}
 	})
+}
+
+func TestValidateProviderURL_PrivateHostAllowlist(t *testing.T) {
+	saveAndRestoreGlobals(t)
+	allowPrivateProviderURLsFn = func() bool { return false }
+	dnsResolverFn = stubResolver(map[string][]string{
+		"cli-proxy.nodesphere.net":   {"127.0.0.1"},
+		"untrusted.local-proxy.test": {"127.0.0.1"},
+	})
+
+	t.Run("allows the configured loopback hostname for OpenAI-compatible providers", func(t *testing.T) {
+		privateProviderAllowedHostsFn = func() []string { return []string{"cli-proxy.nodesphere.net"} }
+		if err := validateProviderURL("https://cli-proxy.nodesphere.net/v1", "openai_compat"); err != nil {
+			t.Fatalf("expected configured local provider host to be allowed, got: %v", err)
+		}
+	})
+
+	t.Run("keeps other loopback hostnames blocked", func(t *testing.T) {
+		privateProviderAllowedHostsFn = func() []string { return []string{"cli-proxy.nodesphere.net"} }
+		if err := validateProviderURL("https://untrusted.local-proxy.test/v1", "openai_compat"); err == nil {
+			t.Fatal("expected unconfigured loopback hostname to remain blocked")
+		}
+	})
+
+	t.Run("does not bypass the local provider type allowlist", func(t *testing.T) {
+		privateProviderAllowedHostsFn = func() []string { return []string{"cli-proxy.nodesphere.net"} }
+		if err := validateProviderURL("https://cli-proxy.nodesphere.net/v1", "ollama"); err == nil {
+			t.Fatal("expected non-localhost Ollama URL to remain blocked")
+		}
+	})
+}
+
+func TestParsePrivateProviderAllowedHosts(t *testing.T) {
+	got := parsePrivateProviderAllowedHosts(" CLI-PROXY.Nodesphere.NET., second-proxy.example, , ")
+	want := []string{"cli-proxy.nodesphere.net", "second-proxy.example"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("parsePrivateProviderAllowedHosts() = %v, want %v", got, want)
+	}
 }
 
 func TestValidateProviderURL_LocalTypesIgnoreAllowPrivateFlag(t *testing.T) {
