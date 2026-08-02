@@ -82,7 +82,8 @@ func (t *WorkstationExecTool) SetPermCheck(fn PermCheckFn) {
 func (t *WorkstationExecTool) Name() string { return "workstation_exec" }
 
 func (t *WorkstationExecTool) Description() string {
-	return "Execute a command on a remote user-owned workstation (SSH or Docker backend). " +
+	return "Execute an argv invocation on a remote user-owned workstation (SSH or Docker backend). " +
+		"Use argv with the executable as argv[0] and each argument as a separate item; do not send a shell command string. " +
 		"Streams stdout/stderr as events. Returns exit code and output tail."
 }
 
@@ -90,17 +91,24 @@ func (t *WorkstationExecTool) Parameters() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"argv": map[string]any{
+				"type":        "array",
+				"minItems":    1,
+				"items":       map[string]any{"type": "string"},
+				"description": "Preferred invocation form. argv[0] is the executable (for example, curl); every later item is one literal argument. Do not put a shell command, newline, or NUL byte in any item.",
+			},
 			"workstation_id": map[string]any{
 				"type":        "string",
 				"description": "Workstation UUID or workstation_key (optional if agent has a default binding)",
 			},
 			"command": map[string]any{
 				"type":        "string",
-				"description": "Command to execute",
+				"description": "Legacy fallback only: executable name/path (argv[0]), never a shell command. Prefer argv for all new calls.",
 			},
 			"args": map[string]any{
-				"type":  "array",
-				"items": map[string]any{"type": "string"},
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Legacy fallback arguments for command. Prefer argv for all new calls.",
 			},
 			"cwd": map[string]any{
 				"type":        "string",
@@ -121,7 +129,9 @@ func (t *WorkstationExecTool) Parameters() map[string]any {
 				"description": "Use persistent tmux session (Phase 4 deferred; currently unsupported)",
 			},
 		},
-		"required": []string{"command"},
+		// argv is the model-facing contract. Execute still accepts command + args for
+		// older direct API/MCP clients, but models must emit a real argv invocation.
+		"required": []string{"argv"},
 	}
 }
 
@@ -131,22 +141,11 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 	agentUUID := store.AgentIDFromContext(ctx)
 	agentID := agentUUID.String()
 
-	// Validate command.
-	cmd, _ := args["command"].(string)
-	if cmd == "" {
-		return ErrorResult(i18n.T(locale, i18n.MsgRequired, "command"))
-	}
-	if strings.ContainsRune(cmd, '\x00') {
-		return ErrorResult("command contains invalid NUL byte")
-	}
-	if len(cmd) > execMaxCmdBytes {
-		return ErrorResult(fmt.Sprintf("command exceeds %d byte limit", execMaxCmdBytes))
-	}
-
-	// Validate and coerce args.
-	execArgs, err := coerceStringSlice(args["args"], execMaxArgBytes)
+	// Parse the argv-first invocation. command + args is kept as a legacy
+	// compatibility path, but callers must not mix the two shapes.
+	cmd, execArgs, err := parseWorkstationInvocation(args)
 	if err != nil {
-		return ErrorResult("args: " + err.Error())
+		return ErrorResult(err.Error())
 	}
 
 	// Validate cwd.
@@ -180,7 +179,10 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 			"agent_id", agentID,
 			"cmd_hash", fmt.Sprintf("%x", sha256.Sum256([]byte(cmd)))[:12],
 		)
-		return ErrorResult(i18n.T(locale, i18n.MsgWorkstationAccessDenied, agentID, ws.WorkstationKey))
+		// The checker distinguishes malformed argv, a denied binary, environment
+		// policy, and rate limits. Preserve that corrective result rather than
+		// misreporting every failure as a missing workstation binding.
+		return ErrorResult(permErr.Error())
 	}
 
 	// 3. Get backend from cache.
@@ -237,6 +239,84 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 		"exit_code", result.ForLLM,
 	)
 	return result
+}
+
+// parseWorkstationInvocation resolves the preferred argv form into the internal
+// command + args representation. The legacy command + args shape remains
+// supported for existing API/MCP callers, but is deliberately not treated as a
+// shell command string.
+func parseWorkstationInvocation(input map[string]any) (string, []string, error) {
+	if rawArgv, hasArgv := input["argv"]; hasArgv && rawArgv != nil {
+		if legacyCommand, _ := input["command"].(string); legacyCommand != "" {
+			return "", nil, errors.New("provide either argv or command + args, not both")
+		}
+		if rawLegacyArgs, exists := input["args"]; exists && rawLegacyArgs != nil {
+			legacyArgs, err := coerceStringSlice(rawLegacyArgs, execMaxArgBytes)
+			if err != nil {
+				return "", nil, fmt.Errorf("args: %w", err)
+			}
+			// Some strict-schema providers materialize unused optional arrays as
+			// []; that is not an ambiguous invocation. Only reject actual legacy
+			// arguments alongside argv.
+			if len(legacyArgs) > 0 {
+				return "", nil, errors.New("provide either argv or command + args, not both")
+			}
+		}
+
+		argv, err := coerceStringSlice(rawArgv, execMaxArgBytes)
+		if err != nil {
+			return "", nil, fmt.Errorf("argv: %w", err)
+		}
+		if len(argv) == 0 || argv[0] == "" {
+			return "", nil, errors.New("argv[0] executable is required")
+		}
+		if err := validateWorkstationArgv(argv); err != nil {
+			return "", nil, err
+		}
+		return argv[0], argv[1:], nil
+	}
+
+	cmd, _ := input["command"].(string)
+	if cmd == "" {
+		return "", nil, errors.New("argv[0] executable or legacy command is required")
+	}
+	if err := validateWorkstationArgv([]string{cmd}); err != nil {
+		return "", nil, err
+	}
+
+	execArgs, err := coerceStringSlice(input["args"], execMaxArgBytes)
+	if err != nil {
+		return "", nil, fmt.Errorf("args: %w", err)
+	}
+	if err := validateWorkstationArgv(execArgs); err != nil {
+		return "", nil, err
+	}
+	return cmd, execArgs, nil
+}
+
+// validateWorkstationArgv rejects bytes which would make an argv item ambiguous
+// when it reaches the SSH transport. This duplicates the defense-in-depth policy
+// check so malformed model output receives an actionable tool result before it is
+// mistaken for a workstation authorization failure.
+func validateWorkstationArgv(argv []string) error {
+	for i, item := range argv {
+		limit := execMaxArgBytes
+		label := fmt.Sprintf("argv[%d]", i)
+		if i == 0 {
+			limit = execMaxCmdBytes
+			label = "argv[0] executable"
+		}
+		if strings.ContainsRune(item, '\x00') {
+			return fmt.Errorf("%s contains invalid NUL byte", label)
+		}
+		if strings.ContainsAny(item, "\r\n") {
+			return fmt.Errorf("%s contains invalid newline; pass one literal argument per argv item", label)
+		}
+		if len(item) > limit {
+			return fmt.Errorf("%s exceeds %d byte limit", label, limit)
+		}
+	}
+	return nil
 }
 
 // resolveWorkstation resolves the target workstation from args or agent's default link.

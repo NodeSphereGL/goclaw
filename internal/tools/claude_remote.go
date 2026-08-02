@@ -90,8 +90,7 @@ func (t *ClaudeRemoteTool) Execute(ctx context.Context, args map[string]any) *Re
 
 	// Pass through to WorkstationExecTool with injected env and forwarded workstation_id.
 	passthrough := map[string]any{
-		"command": "claude",
-		"args":    cmdArgs,
+		"argv": append([]string{"claude"}, cmdArgs...),
 		"env": map[string]string{
 			"CLAUDE_CONFIG_DIR": claudeConfigDir,
 		},
