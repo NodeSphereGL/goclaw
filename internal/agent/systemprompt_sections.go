@@ -324,7 +324,7 @@ func buildToolCallStyleSection() []string {
 		"WRONG: \"I searched memory_search and...\"  RIGHT: \"I recall you mentioned...\"",
 		"",
 		"Rewrite runtime events in natural voice. Use tools directly instead of asking user to run CLI commands.",
-		"When remote workstation execution is available, always use its argv array: argv[0] is the executable and every argument is a separate item. Never place a shell command, newline, or NUL byte in an executable field.",
+		"When remote workstation execution is available, always use its argv array: argv[0] is the executable and every argument is a separate item. For multiline scripts, use a short argv such as [bash, -s] and pass the script through stdin. Never place a shell command, newline, or NUL byte in an executable field.",
 		"",
 	}
 }

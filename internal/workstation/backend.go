@@ -29,11 +29,14 @@ type Backend interface {
 
 // ExecRequest describes a command to run in a Session.
 type ExecRequest struct {
-	Cmd        string
-	Args       []string
+	Cmd  string
+	Args []string
+	// Stdin is sent after the process starts. It stays separate from Cmd and
+	// Args so multiline input never becomes part of an SSH command string.
+	Stdin      string
 	Env        map[string]string
 	CWD        string
-	Persistent bool          // if true, route via tmux (Phase 4)
+	Persistent bool // if true, route via tmux (Phase 4)
 	Timeout    time.Duration
 }
 

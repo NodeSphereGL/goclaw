@@ -62,6 +62,11 @@ func (s *SSHSession) Exec(ctx context.Context, req workstation.ExecRequest) (wor
 		_ = sess.Close()
 		return nil, fmt.Errorf("ssh[%s]: stderr pipe: %w", s.wsKey, err)
 	}
+	stdin, err := sess.StdinPipe()
+	if err != nil {
+		_ = sess.Close()
+		return nil, fmt.Errorf("ssh[%s]: stdin pipe: %w", s.wsKey, err)
+	}
 
 	cmdStr := buildCmdString(req, s.raw)
 	if envPrefixBuilder.Len() > 0 && !s.raw {
@@ -70,9 +75,18 @@ func (s *SSHSession) Exec(ctx context.Context, req workstation.ExecRequest) (wor
 		cmdStr = envPrefixBuilder.String() + cmdStr
 	}
 	if err := sess.Start(cmdStr); err != nil {
+		_ = stdin.Close()
 		_ = sess.Close()
 		return nil, fmt.Errorf("ssh[%s]: start %q: %w", s.wsKey, cmdStr, err)
 	}
+	// Multiline scripts and other input travel through stdin rather than cmdStr.
+	// Closing it is required for processes such as `bash -s` to receive EOF.
+	go func() {
+		if req.Stdin != "" {
+			_, _ = io.WriteString(stdin, req.Stdin)
+		}
+		_ = stdin.Close()
+	}()
 
 	stream := &SSHStream{
 		sess:    sess,

@@ -148,6 +148,38 @@ func TestParseWorkstationInvocationAllowsLongArgWithinLimit(t *testing.T) {
 	}
 }
 
+func TestCoerceWorkstationStdinAcceptsMultilineScriptWithinLimit(t *testing.T) {
+	script := "set -eu\nprintf 'ready\\n'\n"
+	stdin, err := coerceWorkstationStdin(script)
+	if err != nil {
+		t.Fatalf("coerceWorkstationStdin() error = %v", err)
+	}
+	if stdin != script {
+		t.Fatalf("stdin = %q, want %q", stdin, script)
+	}
+
+	_, err = coerceWorkstationStdin(strings.Repeat("x", execMaxStdinBytes+1))
+	if err == nil || !strings.Contains(err.Error(), "exceeds 65536 byte limit") {
+		t.Fatalf("oversized stdin error = %v, want 64 KiB limit", err)
+	}
+
+	_, err = coerceWorkstationStdin([]string{"not a string"})
+	if err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("non-string stdin error = %v, want type validation", err)
+	}
+}
+
+func TestBuildExecRequestKeepsStdinSeparateFromArgv(t *testing.T) {
+	ws := &store.Workstation{}
+	req := buildExecRequest("bash", []string{"-s"}, "echo ready\n", "", nil, ws, 30)
+	if req.Cmd != "bash" || len(req.Args) != 1 || req.Args[0] != "-s" {
+		t.Fatalf("argv = %q %#v, want bash -s", req.Cmd, req.Args)
+	}
+	if req.Stdin != "echo ready\n" {
+		t.Fatalf("stdin = %q, want multiline process input", req.Stdin)
+	}
+}
+
 func TestParseWorkstationInvocationRejectsAmbiguousOrControlInput(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -193,6 +225,9 @@ func TestWorkstationExecSchemaOffersArgvAndLegacyCompatibility(t *testing.T) {
 	if _, ok := properties["command"]; !ok {
 		t.Fatal("legacy command field missing")
 	}
+	if _, ok := properties["stdin"]; !ok {
+		t.Fatal("stdin field missing")
+	}
 	if required, ok := params["required"].([]string); !ok || len(required) != 1 || required[0] != "argv" {
 		t.Fatalf("required = %#v, want argv", params["required"])
 	}
@@ -212,6 +247,9 @@ func TestWorkstationExecSchemaKeepsArgvContractForOpenAICompat(t *testing.T) {
 	}
 	if _, ok := properties["argv"]; !ok {
 		t.Fatal("openai_compat schema lost the argv property")
+	}
+	if _, ok := properties["stdin"]; !ok {
+		t.Fatal("openai_compat schema lost the stdin property")
 	}
 	if required, ok := params["required"].([]string); !ok || len(required) != 1 || required[0] != "argv" {
 		t.Fatalf("cleaned required = %#v, want argv", params["required"])

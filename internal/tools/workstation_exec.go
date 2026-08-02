@@ -39,10 +39,12 @@ const (
 	// execMaxArgBytes accommodates substantial JSON bodies or generated scripts
 	// passed as one literal argv item, while keeping each model-supplied value bounded.
 	execMaxArgBytes = 16 * 1024
-	execMaxCWDBytes = 500
-	execMaxEnvKey   = 256
-	execMaxEnvVal   = 256
-	execMaxEnvCount = 50
+	// execMaxStdinBytes permits a useful multiline script while bounding model-supplied input.
+	execMaxStdinBytes = 64 * 1024
+	execMaxCWDBytes   = 500
+	execMaxEnvKey     = 256
+	execMaxEnvVal     = 256
+	execMaxEnvCount   = 50
 )
 
 // WorkstationExecTool executes commands on a remote workstation backend.
@@ -86,6 +88,7 @@ func (t *WorkstationExecTool) Name() string { return "workstation_exec" }
 func (t *WorkstationExecTool) Description() string {
 	return "Execute an argv invocation on a remote user-owned workstation (SSH or Docker backend). " +
 		"Use argv with the executable as argv[0] and each argument as a separate item; do not send a shell command string. " +
+		"Use stdin for multiline scripts or other process input. " +
 		"Streams stdout/stderr as events. Returns exit code and output tail."
 }
 
@@ -111,6 +114,10 @@ func (t *WorkstationExecTool) Parameters() map[string]any {
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
 				"description": "Legacy fallback arguments for command. Prefer argv for all new calls.",
+			},
+			"stdin": map[string]any{
+				"type":        "string",
+				"description": "Optional standard input sent verbatim to the process after it starts (maximum 64 KiB). Use this for multiline scripts with a short argv such as [\"bash\", \"-s\"].",
 			},
 			"cwd": map[string]any{
 				"type":        "string",
@@ -160,6 +167,10 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 	envMap, err := coerceStringMap(args["env"], execMaxEnvKey, execMaxEnvVal, execMaxEnvCount)
 	if err != nil {
 		return ErrorResult("env: " + err.Error())
+	}
+	stdin, err := coerceWorkstationStdin(args["stdin"])
+	if err != nil {
+		return ErrorResult("stdin: " + err.Error())
 	}
 
 	// Reject persistent=true until Phase 4 SessionManager is wired.
@@ -213,7 +224,7 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 	defer func() { _ = sess.Close(context.Background()) }()
 
 	// Build exec request with defaults from workstation.
-	req := buildExecRequest(cmd, execArgs, cwd, envMap, ws, timeoutSec)
+	req := buildExecRequest(cmd, execArgs, stdin, cwd, envMap, ws, timeoutSec)
 
 	slog.Info("workstation.exec.start",
 		"workstation_id", ws.ID,
@@ -514,6 +525,7 @@ func (t *WorkstationExecTool) streamAndCollect(
 func buildExecRequest(
 	cmd string,
 	args []string,
+	stdin string,
 	cwd string,
 	env map[string]string,
 	ws *store.Workstation,
@@ -539,10 +551,30 @@ func buildExecRequest(
 	return workstation.ExecRequest{
 		Cmd:     cmd,
 		Args:    args,
+		Stdin:   stdin,
 		Env:     merged,
 		CWD:     cwd,
 		Timeout: time.Duration(timeoutSec) * time.Second,
 	}
+}
+
+// coerceWorkstationStdin validates optional process input separately from argv.
+// Newlines are valid stdin data but never valid in Cmd or Args.
+func coerceWorkstationStdin(raw any) (string, error) {
+	if raw == nil {
+		return "", nil
+	}
+	stdin, ok := raw.(string)
+	if !ok {
+		return "", errors.New("must be a string")
+	}
+	if strings.ContainsRune(stdin, '\x00') {
+		return "", errors.New("contains invalid NUL byte")
+	}
+	if len(stdin) > execMaxStdinBytes {
+		return "", fmt.Errorf("exceeds %d byte limit", execMaxStdinBytes)
+	}
+	return stdin, nil
 }
 
 // tailBuffer keeps the last N bytes written to it (ring-buffer semantics).
