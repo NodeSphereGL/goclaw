@@ -36,7 +36,9 @@ const (
 	execChunkSize   = 64 * 1024 // 64 KiB max chunk
 	execTailSize    = 2 * 1024  // last 2 KiB of stdout/stderr
 	execMaxCmdBytes = 4 * 1024
-	execMaxArgBytes = 1024
+	// execMaxArgBytes accommodates substantial JSON bodies or generated scripts
+	// passed as one literal argv item, while keeping each model-supplied value bounded.
+	execMaxArgBytes = 16 * 1024
 	execMaxCWDBytes = 500
 	execMaxEnvKey   = 256
 	execMaxEnvVal   = 256

@@ -125,6 +125,29 @@ func TestParseWorkstationInvocationRetainsLegacyCommandArgs(t *testing.T) {
 	}
 }
 
+func TestParseWorkstationInvocationAllowsLongArgWithinLimit(t *testing.T) {
+	// The production failure was a 3,285-byte script/body passed as argv[2].
+	// Keep coverage at the full configured limit so future changes cannot silently
+	// restore the historical 1 KiB cap.
+	longArg := strings.Repeat("x", execMaxArgBytes)
+	cmd, args, err := parseWorkstationInvocation(map[string]any{
+		"argv": []any{"sh", "-c", longArg},
+	})
+	if err != nil {
+		t.Fatalf("parseWorkstationInvocation() error = %v", err)
+	}
+	if cmd != "sh" || len(args) != 2 || args[1] != longArg {
+		t.Fatalf("invocation = %q %#v, want long argv item preserved", cmd, args)
+	}
+
+	_, _, err = parseWorkstationInvocation(map[string]any{
+		"argv": []any{"sh", "-c", longArg + "x"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds 16384 byte limit") {
+		t.Fatalf("oversized argv error = %v, want 16 KiB limit", err)
+	}
+}
+
 func TestParseWorkstationInvocationRejectsAmbiguousOrControlInput(t *testing.T) {
 	tests := []struct {
 		name  string
