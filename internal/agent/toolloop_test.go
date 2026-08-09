@@ -652,6 +652,63 @@ func TestSameResult_Critical(t *testing.T) {
 	}
 }
 
+// TestSameResultForTool_ExecSuccessExempt reproduces the operator-agent false
+// positive: a batch of distinct successful workstation_exec config commands that
+// each return empty output ("exit_code: 0\nstdout:\n\nstderr:\n") must NOT be
+// flagged as a runaway loop.
+func TestSameResultForTool_ExecSuccessExempt(t *testing.T) {
+	var s toolLoopState
+	emptySuccess := "exit_code: 0\nstdout:\n\nstderr:\n"
+	for i := range sameResultCritical {
+		args := map[string]any{"argv": []any{"cmd", string(rune('a' + i))}}
+		h := s.record("workstation_exec", args)
+		s.recordResult(h, emptySuccess)
+	}
+	rh := hashResult(emptySuccess)
+	level, _ := s.detectSameResultForTool("workstation_exec", false, rh)
+	if level != "" {
+		t.Fatalf("expected no detection for successful exec-family batch, got %q", level)
+	}
+	// Sanity: the raw detector (without the exec exemption) still counts them,
+	// proving the exemption is what suppresses the false positive.
+	if level, _ := s.detectSameResult("workstation_exec", rh); level != "critical" {
+		t.Fatalf("expected raw detectSameResult critical, got %q", level)
+	}
+}
+
+// TestSameResultForTool_ExecErrorStillCounts ensures failed exec-family commands
+// (non-empty identical errors with varying args) are still caught as a loop.
+func TestSameResultForTool_ExecErrorStillCounts(t *testing.T) {
+	var s toolLoopState
+	sameErr := "exit_code: 1\nstdout:\n\nstderr:\nexpected end of command\n"
+	for i := range sameResultCritical {
+		args := map[string]any{"argv": []any{"cmd", string(rune('a' + i))}}
+		h := s.record("workstation_exec", args)
+		s.recordResult(h, sameErr)
+	}
+	rh := hashResult(sameErr)
+	level, _ := s.detectSameResultForTool("workstation_exec", true, rh)
+	if level != "critical" {
+		t.Fatalf("expected critical for repeated exec-family errors, got %q", level)
+	}
+}
+
+// TestSameResultForTool_ReadToolUnaffected ensures non-exec tools still trip the
+// detector (regression guard on the exemption scope).
+func TestSameResultForTool_ReadToolUnaffected(t *testing.T) {
+	var s toolLoopState
+	sameResult := "directory listing output"
+	for i := range sameResultCritical {
+		args := map[string]any{"path": string(rune('a' + i))}
+		h := s.record("list_files", args)
+		s.recordResult(h, sameResult)
+	}
+	rh := hashResult(sameResult)
+	if level, _ := s.detectSameResultForTool("list_files", false, rh); level != "critical" {
+		t.Fatalf("expected critical for read-tool same-result, got %q", level)
+	}
+}
+
 func TestSameResult_DifferentResults(t *testing.T) {
 	var s toolLoopState
 	// Same tool, same args pattern, but different results each time → no detection

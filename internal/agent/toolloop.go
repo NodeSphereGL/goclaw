@@ -241,6 +241,31 @@ func (s *toolLoopState) detectReadOnlyStreak() (level, message string) {
 	return "", ""
 }
 
+// execFamilyTools run external shell/commands whose identical output does NOT
+// imply a no-progress loop. A successful command returning empty or repeated
+// output is the normal success signal for a mutation (config apply, systemctl,
+// idempotent set), so same-result detection must not flag a batch of distinct
+// successful commands as a runaway loop. Genuine same-command loops are still
+// caught by detect() (same args + same result), and failed commands still count.
+var execFamilyTools = map[string]bool{
+	"exec": true, "bash": true, "workstation_exec": true,
+}
+
+// isExecFamilyTool reports whether the tool is an external shell/command runner.
+func isExecFamilyTool(toolName string) bool {
+	return execFamilyTools[toolName]
+}
+
+// detectSameResultForTool applies same-result loop detection, skipping the check
+// for successful exec-family commands whose identical output is a legitimate
+// mutation signal rather than re-reading the same information.
+func (s *toolLoopState) detectSameResultForTool(toolName string, isError bool, resultHash string) (level, message string) {
+	if isExecFamilyTool(toolName) && !isError {
+		return "", ""
+	}
+	return s.detectSameResult(toolName, resultHash)
+}
+
 // detectSameResult checks if the same tool returned identical results multiple
 // times with different arguments. This catches loops where the agent varies
 // args slightly but gets no new information.

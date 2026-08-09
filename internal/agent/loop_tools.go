@@ -133,8 +133,11 @@ func (l *Loop) processToolResult(
 	}
 
 	// Check for same tool returning identical results with different args.
+	// Successful exec-family commands are exempt: empty/identical output from a
+	// successful shell/workstation command is a normal mutation signal, not a
+	// no-progress read loop (failed commands still count).
 	if rh := hashResult(result.ForLLM); rh != "" {
-		if level, msg := rs.loopDetector.detectSameResult(registryName, rh); level != "" {
+		if level, msg := rs.loopDetector.detectSameResultForTool(registryName, result.IsError, rh); level != "" {
 			if level == "critical" {
 				slog.Warn("tool loop critical: same result",
 					"tool", registryName, "agent", l.id, "run", req.RunID)
